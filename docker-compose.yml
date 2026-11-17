@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16
+    container_name: streaming-db
+    environment:
+      POSTGRES_DB: streaming
+      POSTGRES_USER: streaming
+      POSTGRES_PASSWORD: streaming
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts:/docker-entrypoint-initdb.d
+volumes:
+  pgdata:
