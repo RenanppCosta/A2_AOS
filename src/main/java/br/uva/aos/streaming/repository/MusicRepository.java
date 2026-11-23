@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface MusicRepository extends JpaRepository<Music, Long> {
 
@@ -14,4 +15,7 @@ public interface MusicRepository extends JpaRepository<Music, Long> {
      */
     @Query("select m from Music m join fetch m.album order by m.reproductions desc, m.id asc")
     List<Music> findTop(Pageable pageable);
+
+    @Query("select m from Music m join fetch m.album where m.album.id = :albumId order by m.reproductions desc")
+    List<Music> findByAlbumIdOrderByReproductionsDesc(@Param("albumId") Long albumId);
 }

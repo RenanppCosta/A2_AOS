@@ -40,6 +40,11 @@ public class MusicController {
         return service.findWithCache(id);
     }
 
+    @GetMapping("/album/{albumId}")
+    public List<MusicDTO> byAlbum(@PathVariable Long albumId) {
+        return service.findByAlbum(albumId);
+    }
+
     // ----- Atualização -----
 
     @PutMapping("/{id}")
