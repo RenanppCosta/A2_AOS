@@ -26,15 +26,11 @@ public class MusicService {
         this.repository = repository;
     }
 
-    // ---------------- Top 50 (cache principal do trabalho) ----------------
-
-    /** Cenário A: toda requisição ordena a tabela no banco. */
     @Transactional(readOnly = true)
     public List<MusicDTO> top50WithoutCache() {
         return loadTop50();
     }
 
-    /** Cenário B: só vai ao banco em cache miss (ou depois do TTL / invalidação). */
     @Cacheable(cacheNames = CacheConfig.TOP_MUSICS_CACHE, key = "'top50'")
     @Transactional(readOnly = true)
     public List<MusicDTO> top50WithCache() {
@@ -47,15 +43,11 @@ public class MusicService {
                 .toList();
     }
 
-    // ---------------- Busca por id (contraste: consulta barata) ----------------
-
-    /** Cenário A: sempre consulta o banco. */
     @Transactional(readOnly = true)
     public MusicDTO findWithoutCache(Long id) {
         return MusicDTO.from(find(id));
     }
 
-    /** Cenário B: só consulta o banco em cache miss. */
     @Cacheable(cacheNames = CacheConfig.MUSICS_CACHE, key = "#id")
     @Transactional(readOnly = true)
     public MusicDTO findWithCache(Long id) {
@@ -69,12 +61,6 @@ public class MusicService {
                 .toList();
     }
 
-    // ---------------- Atualização + invalidação ----------------
-
-    /**
-     * Atualiza no banco e invalida os caches afetados: a entrada da música e o
-     * ranking Top 50 (que pode ter mudado de ordem).
-     */
     @Caching(evict = {
             @CacheEvict(cacheNames = CacheConfig.MUSICS_CACHE, key = "#id"),
             @CacheEvict(cacheNames = CacheConfig.TOP_MUSICS_CACHE, allEntries = true)

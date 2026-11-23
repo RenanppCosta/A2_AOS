@@ -2,6 +2,11 @@
 
 Trabalho Prático A2 — Análise e Otimização de Sistemas (UVA) — Prof. André Lucio
 
+- Erik Schoenherr Menezes - 1230106022
+- Renan Pinto Pereira da Costa - 1230212344
+
+Repositorio - https://github.com/RenanppCosta/A2_AOS
+
 ## 1. Introdução
 
 Este trabalho prático tem como objetivo aplicar e avaliar experimentalmente técnicas de otimização de desempenho em Web Services REST conectados a um banco de dados relacional. Foi desenvolvida uma API de **streaming de música** (artistas, álbuns e músicas) com **100.000 músicas**, **10.000 álbuns** e **1.000 artistas**, sobre a qual foram implementados e medidos três pilares de otimização:
@@ -23,7 +28,25 @@ Este trabalho prático tem como objetivo aplicar e avaliar experimentalmente té
 **Entidades:** `Artist` (1:N) `Album` (1:N) `Music`
 
 **Volume de dados:** 1.000 artistas, 10.000 álbuns, 100.000 músicas (`scripts/02-data.sql`).
+### Pré-requisitos
 
+| Ferramenta | Versão | Para quê | Como verificar |
+|---|---|---|---|
+| JDK | 21 ou superior | compilar e executar a API | `java -version` |
+| Docker Desktop | com o engine em execução | PostgreSQL em container | `docker info` |
+| Git | qualquer | clonar o repositório | `git --version` |
+| PowerShell | 5.1 ou superior (Windows) | scripts de experimento (`.ps1`) | `$PSVersionTable.PSVersion` |
+| Grafana k6 | 2.4.0 | testes de carga | `k6 version` |
+| Python 3 + matplotlib | qualquer 3.x | gráficos do relatório do k6 | `python --version` |
+
+O Maven **não** precisa ser instalado (o repositório inclui o Maven Wrapper, `mvnw`). Insomnia ou Postman são
+opcionais. Portas utilizadas: **8080** (API) e **5433** (PostgreSQL).
+
+Instalação no Windows:
+```powershell
+winget install k6 --source winget     # depois feche e reabra o terminal
+pip install matplotlib                # o numpy é instalado junto
+```
 ### Como executar
 
 ```powershell
@@ -54,7 +77,9 @@ docker compose up -d            # sobe o PostgreSQL (porta 5433) e popula o banc
 
 Os endpoints `/api/albums/*` devolvem um relatório (`QueryReport`): quantidade de SQLs
 executados, entidades carregadas e tempo. Os contadores do Hibernate são globais, então
-use esses endpoints **uma requisição por vez** (evidência), e não dentro do teste de carga.
+use esses endpoints **uma requisição por vez** (evidência). Exceção: o Cenário 2 do k6 (seção 5) os chama sob
+carga; nele o relatório é ignorado (o k6 só confere o status 200) e o custo de coletar as estatísticas é o mesmo
+nas três estratégias, então a comparação continua justa, mas as latências absolutas incluem esse custo.
 
 ## 3. Implementação de cache
 
@@ -148,7 +173,7 @@ powershell -ExecutionPolicy Bypass -File .\experiments\cache-experiment.ps1
 
 **Resultado medido:**
 
-![Resultado do script cache-experiment](img.png)
+![Resultado do script cache-experiment](imgs/img.png)
 
 | Hora | Passo | Tempo (ms) | Foi ao banco? |
 |---|---|---|---|
@@ -164,7 +189,7 @@ depois do passo 6, `hits = 2`, `misses = 3`, `hitRate = 0,4`, `size = 1`.
 
 **Log da aplicação durante o experimento** (cada linha `org.hibernate.SQL` é um acesso ao banco):
 
-![Log do terminal ao rodar o script](img_2.png)
+![Log do terminal ao rodar o script](imgs/img_2.png)
 
 | Hora no log | Linha | Corresponde a |
 |---|---|---|
@@ -222,7 +247,7 @@ powershell -ExecutionPolicy Bypass -File .\experiments\cache-comparison.ps1
 | Busca por id — com cache (MISS) | 6,7 | 6,7 | 6,7 |
 | Busca por id — com cache (HIT) | 2,5 | 1,2 | 11,5 |
 
-![img_4.png](img_4.png)
+![img_4.png](imgs/img_4.png)
 Estatísticas ao final: cada cache registrou 10 *hits* e 1 *miss* (`hitRate` ≈ 0,91). Os
 *misses* foram medidos com uma única chamada cada, portanto são amostras isoladas. Na busca por
 id, a média do HIT (2,5 ms) é puxada por um valor isolado de 11,5 ms; sem ele, a média cairia
@@ -310,8 +335,8 @@ for (Album a : albums) {
 
 **Resultado com `limit=5`:**
 
-![Resposta de /api/albums/lazy?limit=5](img_5.png)
-![Log SQL de /api/albums/lazy?limit=5](img_7.png)
+![Resposta de /api/albums/lazy?limit=5](imgs/img_5.png)
+![Log SQL de /api/albums/lazy?limit=5](imgs/img_7.png)
 
 | Hora no log | Linha | Corresponde a |
 |---|---|---|
@@ -346,8 +371,8 @@ public class AlbumEager {
 
 **Resultado com `limit=5`:**
 
-![Resposta de /api/albums/eager?limit=5](img_8.png)
-![Log SQL de /api/albums/eager?limit=5](img_9.png)
+![Resposta de /api/albums/eager?limit=5](imgs/img_8.png)
+![Log SQL de /api/albums/eager?limit=5](imgs/img_9.png)
 
 | Hora no log | Linha | Corresponde a |
 |---|---|---|
@@ -382,7 +407,8 @@ de idas ao banco.
 #### Comparação com quantidades diferentes de registros
 
 Executado por `experiments/lazy-eager-comparison.ps1` (aquecimento + média de 5 chamadas). Para essa
-medição o log do SQL foi desligado (`org.hibernate.SQL = INFO`) para não distorcer os tempos.
+medição o log do SQL foi desligado (`org.hibernate.SQL = INFO`) para não distorcer os tempos, e o banco
+estava **sem** o índice `idx_music_album_reproductions` (o efeito do índice sobre essas consultas está em 4.5).
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\experiments\lazy-eager-comparison.ps1
@@ -390,17 +416,17 @@ powershell -ExecutionPolicy Bypass -File .\experiments\lazy-eager-comparison.ps1
 
 | Estratégia | Álbuns | Músicas | Comandos SQL | Entidades carregadas | Tempo médio (ms) | Mín (ms) | Máx (ms) |
 |---|---|---|---|---|---|---|---|
-| LAZY | 10 | 10 | 11 | 110 | 92,2 | 88 | 99 |
-| EAGER | 10 | 10 | 11 | 110 | 86,2 | 85 | 88 |
-| JOIN FETCH | 10 | 10 | 1 | 110 | 10,2 | 10 | 11 |
-| LAZY | 100 | 100 | 101 | 1100 | 837,2 | 817 | 875 |
-| EAGER | 100 | 100 | 101 | 1100 | 818,6 | 815 | 824 |
-| JOIN FETCH | 100 | 100 | 1 | 1100 | 16,4 | 16 | 17 |
-| LAZY | 1000 | 1000 | 1001 | 11000 | 8204,8 | 8179 | 8236 |
-| EAGER | 1000 | 1000 | 1001 | 11000 | 8577,8 | 8276 | 8947 |
-| JOIN FETCH | 1000 | 1000 | 1 | 11000 | 87 | 83 | 91 |
+| LAZY | 10 | 100 | 11 | 110 | 92,2 | 88 | 99 |
+| EAGER | 10 | 100 | 11 | 110 | 86,2 | 85 | 88 |
+| JOIN FETCH | 10 | 100 | 1 | 110 | 10,2 | 10 | 11 |
+| LAZY | 100 | 1000 | 101 | 1100 | 837,2 | 817 | 875 |
+| EAGER | 100 | 1000 | 101 | 1100 | 818,6 | 815 | 824 |
+| JOIN FETCH | 100 | 1000 | 1 | 1100 | 16,4 | 16 | 17 |
+| LAZY | 1000 | 10000 | 1001 | 11000 | 8204,8 | 8179 | 8236 |
+| EAGER | 1000 | 10000 | 1001 | 11000 | 8577,8 | 8276 | 8947 |
+| JOIN FETCH | 1000 | 10000 | 1 | 11000 | 87 | 83 | 91 |
 
-![img_12.png](img_12.png)
+![img_12.png](imgs/img_12.png)
 
 #### Efeito de carregar dados desnecessários
 
@@ -413,10 +439,11 @@ Quando o código precisa **apenas dos álbuns** (por exemplo, uma listagem de t�
 | LAZY (só álbuns) | 1000 | 1 | 1000 | 6 |
 | EAGER (só álbuns) | 1000 | 1001 | 11000 | 8317 |
 
-![img_13.png](img_13.png)
+![img_13.png](imgs/img_13.png)
 
-_( Esperado: o LAZY faz 1 comando e carrega só os álbuns; o EAGER continua
-executando uma query por álbum e carregando todas as músicas, sem que ninguém as use.)_
+Com `limit=1000`, o LAZY fez 1 comando e carregou 1.000 entidades (6 ms); o EAGER fez 1.001 comandos,
+carregou 11.000 entidades (11 vezes mais) e levou 8.317 ms para devolver a mesma lista de álbuns. O EAGER
+paga o custo das músicas mesmo quando ninguém as usa.
 
 #### Em quais situações LAZY ou EAGER é mais adequado
 
@@ -443,8 +470,8 @@ List<Album> findWithMusics(@Param("limit") long limit);
 
 **Resultado com `limit=5`:**
 
-![Resposta de /api/albums/optimized?limit=5](img_10.png)
-![Log SQL de /api/albums/optimized?limit=5](img_11.png)
+![Resposta de /api/albums/optimized?limit=5](imgs/img_10.png)
+![Log SQL de /api/albums/optimized?limit=5](imgs/img_11.png)
 
 SQL gerado pelo Hibernate (1 único comando):
 
@@ -494,6 +521,9 @@ executa para cada álbum no N+1, então um índice aqui afeta a aplicação inte
 `music` só tem o índice da chave primária (`music_pkey`), que não atende a esse filtro; o PostgreSQL
 não cria índice automático para chave estrangeira.
 
+A API (`GET /api/music/album/{albumId}`, usada no Cenário 3 do k6) executa a mesma busca com `JOIN FETCH` do
+álbum; o filtro por `album_id` e a ordenação por `reproductions`, que o índice atende, são os mesmos.
+
 #### Sem índice × com índice
 
 Executado com os comandos de `experiments/indexes.sql`:
@@ -508,9 +538,9 @@ docker exec -it streaming-db psql -U streaming -c "EXPLAIN ANALYZE SELECT * FROM
 
 #### Plano de execução
 
-**Sem índice:** ![img_14.png](img_14.png)
+**Sem índice:** ![img_14.png](imgs/img_14.png)
 
-**Com índice:** ![img_15.png](img_15.png)
+**Com índice:** ![img_15.png](imgs/img_15.png)
 
 | Item do plano | Sem índice | Com índice |
 |---|---|---|
@@ -526,8 +556,14 @@ docker exec -it streaming-db psql -U streaming -c "EXPLAIN ANALYZE SELECT * FROM
 
 | Cenário | Comandos SQL | Tempo médio (ms) |
 |---|---|---|
-| LAZY, limit=1000, sem índice | ___ | ___ |
-| LAZY, limit=1000, com índice | ___ | ___ |
+| LAZY, limit=1000, sem índice | 1.001 | 8.204,8 |
+| LAZY, limit=1000, com índice | 1.001 | 1.125,6 |
+
+O número de comandos não mudou (continua sendo N+1), mas cada comando ficou mais barato (de `Seq Scan` para
+`Index Scan`): o tempo médio do LAZY caiu **86,3%** (≈ 7,3×), e o do EAGER seguiu o mesmo caminho
+(8.577,8 → 878,8 ms). Mesmo com o índice, o `JOIN FETCH` (84,4 ms) continua ≈ 13× mais rápido que o LAZY com
+índice: o índice atenua o custo do N+1, mas não o elimina. Medições com a mesma metodologia de 4.3 (aquecimento,
+média de 5 chamadas, log SQL desligado).
 
 **Custo em espaço:**
 
@@ -535,24 +571,26 @@ docker exec -it streaming-db psql -U streaming -c "EXPLAIN ANALYZE SELECT * FROM
 |---|---|
 | Tabela `music` | `8536 kB` |
 | Índice `idx_music_album_reproductions` | `3104 kB` |
-![img_16.png](img_16.png)
+![img_16.png](imgs/img_16.png)
 
 #### Perguntas da seção 5.4
 
 **1. O índice foi efetivamente utilizado pelo banco?**
-_(Responder com o plano. Ex.: "Sim: o plano passou de `Seq Scan on music` para `Index Scan using
-idx_music_album_reproductions`." Informar também se o banco usou algum outro índice existente: o
-único era `music_pkey`, que não atende ao filtro por `album_id`.)_
+Sim. O plano passou de `Seq Scan on music` (com etapa de `Sort` e 99.990 linhas descartadas pelo filtro)
+para `Index Scan using idx_music_album_reproductions on music`, com `Index Cond: (album_id = 150)`, sem
+`Sort` e sem linhas descartadas. O único outro índice da tabela era `music_pkey` (chave primária), que não
+atende ao filtro por `album_id`; portanto, antes do novo índice, o banco não tinha alternativa além de
+varrer a tabela inteira.
 
 **2. Houve redução no tempo de execução?**
-Sim: de 7.149 ms para 0.055 ms (redução de 99,23%)"
+Sim: de 7,149 ms para 0,055 ms (redução de 99,23%, cerca de 130 vezes mais rápido).
 
 **3. Quais fatores influenciaram o resultado?**
 - **Seletividade:** o filtro `album_id = 150` retorna ~10 linhas de 100.000 (≈ 0,01% da tabela),
   o cenário em que o índice mais compensa; para consultas que devolvem grande parte da tabela, o
   planejador tende a preferir a varredura completa.
 - **Ordem das colunas do índice:** `album_id` primeiro (igualdade no `WHERE`) e `reproductions DESC`
-  depois, o que entrega as linhas já ordenadas e elimina a etapa de `Sort` _(confirmar no plano)_.
+  depois, o que entrega as linhas já ordenadas e elimina a etapa de `Sort` (confirmado no plano: o `Sort` desapareceu).
 - **Estatísticas do banco:** o `ANALYZE` mantém atualizadas as estimativas usadas pelo planejador.
 - **Cache de páginas:** a primeira execução pode estar "fria"; por isso cada consulta foi executada
   3 vezes e foi registrada a última.
@@ -607,97 +645,107 @@ Todos os cenários foram executados contra o mesmo banco populado (**1.000 artis
 ### 5.3 Cuidados com a execução
 
 - **Ambiente equivalente:** mesma instância da API Spring Boot (Java 21) e PostgreSQL 16 em Docker, sem outras cargas concorrentes.
-- **Logs SQL desligados:** `org.hibernate.SQL=WARN` e `org.hibernate.stat=WARN` para evitar que I/O de console distorcesse a latência.
+- **Logs SQL desligados:** durante a medição de carga, utilizar `org.hibernate.SQL=WARN` e `org.hibernate.stat=WARN` para evitar que I/O de console distorça a latência. **Essa configuração precisa ser aplicada antes de iniciar a API para os testes**; o script `run-all.ps1` não muda automaticamente os níveis de log do Spring Boot.
 - **Aquecimento prévio:** requisições de aquecimento executadas antes da coleta para estabilizar JIT da JVM e o pool de conexões (HikariCP).
 - **Controle de estado:** índice removido (`DROP INDEX IF EXISTS`) antes dos Cenários 1, 2 e 3 (sem índice) e recriado com `ANALYZE music` antes do Cenário 3 (com índice); cache limpo via `DELETE /api/cache` entre os modos do Cenário 1.
 - **Reprodutibilidade:** toda a bateria pode ser executada novamente com:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\experiments\k6\run-all.ps1
+powershell -ExecutionPolicy Bypass -File .\experiments\k6\run-all.ps1 -Duration 12s
 python .\experiments\k6\generate_report.py
 ```
 
-### 5.4 Resultados comparativos
+### 5.4 Resultados comparativos — nova bateria (23/11/2026)
+
+Os valores abaixo foram transcritos da saída mais recente enviada do `python .\experiments\k6\generate_report.py`, que lê os arquivos de `experiments/k6/results`. O gerador imprimiu **32 séries** (12 de cache, 12 de persistência e 8 de índices) e salvou três gráficos. Todas essas séries apresentam **0,00% de falhas HTTP** no resumo.
+
+**Rastreabilidade:** o pacote final contém os **32 arquivos JSON** utilizados nas tabelas. Foi conferida a correspondência das 32 linhas do relatório com as métricas gravadas nos JSONs. Os horários de modificação preservados no arquivo compactado seguem a sequência esperada de execução, inclusive para `c1-sem-cache-vus200.json` e `c1-com-cache-quente-vus200.json`, cujas linhas não apareceram no trecho de terminal copiado. Esses horários são evidência de consistência da bateria, mas não substituem a repetição independente dos experimentos.
+
+**Interpretação do cache frio:** a indicação "MISS inicial" se refere ao *estado de partida* do cache. Durante os 12 s, o cache é preenchido e chamadas posteriores podem ser hits. Os percentis e médias desse cenário **não são medições isoladas de misses**.
 
 #### Cenário 1 — Cache (`GET /api/music/top50`)
 
 | Implementação | VUs | Latência média (ms) | p95 (ms) | p99 (ms) | Throughput (req/s) | Taxa de erros (%) | Total reqs |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Sem cache | 10 | 32,40 | 46,64 | 51,23 | 306,5 | 0,00% | 3.686 |
-| Sem cache | 50 | 156,05 | 181,52 | 282,43 | 318,0 | 0,00% | 3.862 |
-| Sem cache | 100 | 313,16 | 362,89 | 593,86 | 315,1 | 0,00% | 3.875 |
-| Sem cache | 200 | 652,43 | 742,11 | 1.302,83 | 298,3 | 0,00% | 3.772 |
-| Com cache (quente / HIT) | 10 | 1,94 | 4,64 | 9,33 | 4.914,5 | 0,00% | 59.526 |
-| Com cache (quente / HIT) | 50 | 5,54 | 11,98 | 20,44 | 8.707,7 | 0,00% | 104.750 |
-| Com cache (quente / HIT) | 100 | 12,22 | 25,65 | 42,36 | 8.074,6 | 0,00% | 97.198 |
-| Com cache (quente / HIT) | 200 | 45,75 | 85,08 | 497,54 | 4.246,3 | 0,00% | 54.335 |
-| Com cache (frio / MISS inicial) | 10 | 1,70 | 4,23 | 7,17 | 5.624,8 | 0,00% | 67.584 |
-| Com cache (frio / MISS inicial) | 50 | 6,06 | 12,85 | 23,99 | 7.961,2 | 0,00% | 95.663 |
-| Com cache (frio / MISS inicial) | 100 | 18,28 | 39,65 | 80,78 | 5.377,6 | 0,00% | 65.047 |
-| Com cache (frio / MISS inicial) | 200 | 28,33 | 57,54 | 112,44 | 7.011,2 | 0,00% | 84.394 |
+| Sem cache | 10 | 87,27 | 131,29 | 170,69 | 114,2 | 0,00% | 1.375 |
+| Sem cache | 50 | 443,77 | 529,55 | 805,85 | 110,4 | 0,00% | 1.378 |
+| Sem cache | 100 | 962,61 | 1.150,70 | 1.817,01 | 100,3 | 0,00% | 1.293 |
+| Sem cache | 200 | 1.986,35 | 2.429,95 | 2.542,49 | 93,8 | 0,00% | 1.327 |
+| Com cache (quente / HIT) | 10 | 0,52 | 1,64 | 2,88 | 15.910,9 | 0,00% | 191.584 |
+| Com cache (quente / HIT) | 50 | 2,87 | 8,59 | 15,89 | 15.709,8 | 0,00% | 189.238 |
+| Com cache (quente / HIT) | 100 | 5,91 | 15,87 | 34,73 | 15.185,4 | 0,00% | 183.303 |
+| Com cache (quente / HIT) | 200 | 11,65 | 29,46 | 57,13 | 14.951,1 | 0,00% | 180.405 |
+| Com cache (frio / MISS inicial) | 10 | 0,53 | 1,62 | 2,96 | 15.717,2 | 0,00% | 188.810 |
+| Com cache (frio / MISS inicial) | 50 | 3,06 | 8,89 | 16,45 | 14.689,3 | 0,00% | 176.481 |
+| Com cache (frio / MISS inicial) | 100 | 6,80 | 16,85 | 39,03 | 13.430,5 | 0,00% | 161.371 |
+| Com cache (frio / MISS inicial) | 200 | 15,05 | 31,06 | 76,42 | 11.762,0 | 0,00% | 141.315 |
 
-![Gráfico Cenário 1 — Cache](experiments/k6/charts/cenario1_cache.png)
+![Gráfico Cenário 1 — Cache, regenerado a partir dos resultados locais](experiments/k6/charts/cenario1_cache.png)
 
 #### Cenário 2 — Estratégias de persistência (`GET /api/albums/*?limit=10`)
 
 | Implementação | VUs | Latência média (ms) | p95 (ms) | p99 (ms) | Throughput (req/s) | Taxa de erros (%) | Total reqs |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| LAZY (N+1) | 10 | 51,59 | 62,82 | 72,44 | 192,9 | 0,00% | 2.320 |
-| LAZY (N+1) | 50 | 247,01 | 274,56 | 287,26 | 200,2 | 0,00% | 2.449 |
-| LAZY (N+1) | 100 | 492,25 | 542,52 | 572,08 | 199,2 | 0,00% | 2.484 |
-| LAZY (N+1) | 200 | 948,16 | 1.007,10 | 1.016,31 | 202,9 | 0,00% | 2.629 |
-| EAGER (N+1) | 10 | 50,71 | 59,15 | 64,17 | 196,2 | 0,00% | 2.362 |
-| EAGER (N+1) | 50 | 261,28 | 303,67 | 322,97 | 189,3 | 0,00% | 2.315 |
-| EAGER (N+1) | 100 | 488,71 | 539,31 | 579,23 | 200,6 | 0,00% | 2.502 |
-| EAGER (N+1) | 200 | 949,98 | 1.041,12 | 1.057,52 | 202,6 | 0,00% | 2.627 |
-| JOIN FETCH (otimizada) | 10 | 7,81 | 10,49 | 13,09 | 1.260,3 | 0,00% | 15.133 |
-| JOIN FETCH (otimizada) | 50 | 36,28 | 41,67 | 65,87 | 1.371,4 | 0,00% | 16.504 |
-| JOIN FETCH (otimizada) | 100 | 72,50 | 82,04 | 139,03 | 1.372,2 | 0,00% | 16.556 |
-| JOIN FETCH (otimizada) | 200 | 144,54 | 163,99 | 286,19 | 1.373,7 | 0,00% | 16.672 |
+| LAZY (N+1) | 10 | 162,01 | 222,39 | 272,36 | 61,4 | 0,00% | 746 |
+| LAZY (N+1) | 50 | 788,53 | 978,63 | 1.095,15 | 61,7 | 0,00% | 784 |
+| LAZY (N+1) | 100 | 1.651,70 | 1.947,51 | 2.163,97 | 56,5 | 0,00% | 786 |
+| LAZY (N+1) | 200 | 3.315,37 | 4.007,87 | 4.632,81 | 53,5 | 0,00% | 825 |
+| EAGER (N+1) | 10 | 164,68 | 229,49 | 278,53 | 60,4 | 0,00% | 730 |
+| EAGER (N+1) | 50 | 845,88 | 981,86 | 1.103,96 | 56,7 | 0,00% | 741 |
+| EAGER (N+1) | 100 | 1.696,33 | 2.080,81 | 2.142,69 | 55,4 | 0,00% | 758 |
+| EAGER (N+1) | 200 | 3.149,11 | 3.724,95 | 6.552,21 | 56,6 | 0,00% | 873 |
+| JOIN FETCH (otimizada) | 10 | 25,80 | 43,78 | 56,68 | 385,2 | 0,00% | 4.628 |
+| JOIN FETCH (otimizada) | 50 | 121,36 | 157,94 | 222,94 | 409,4 | 0,00% | 4.962 |
+| JOIN FETCH (otimizada) | 100 | 254,86 | 329,92 | 481,27 | 387,8 | 0,00% | 4.753 |
+| JOIN FETCH (otimizada) | 200 | 497,80 | 714,70 | 1.084,18 | 394,2 | 0,00% | 4.905 |
 
-![Gráfico Cenário 2 — Persistência](experiments/k6/charts/cenario2_persistencia.png)
+![Gráfico Cenário 2 — Persistência, regenerado a partir dos resultados locais](experiments/k6/charts/cenario2_persistencia.png)
 
 #### Cenário 3 — Índices (`GET /api/music/album/{albumId}`)
 
 | Implementação | VUs | Latência média (ms) | p95 (ms) | p99 (ms) | Throughput (req/s) | Taxa de erros (%) | Total reqs |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Sem índice | 10 | 6,23 | 7,98 | 9,05 | 1.580,0 | 0,00% | 18.970 |
-| Sem índice | 50 | 29,00 | 36,82 | 52,38 | 1.713,6 | 0,00% | 20.624 |
-| Sem índice | 100 | 57,86 | 68,45 | 112,12 | 1.719,6 | 0,00% | 20.726 |
-| Sem índice | 200 | 115,68 | 129,13 | 231,25 | 1.717,3 | 0,00% | 20.795 |
-| Com índice | 10 | 1,31 | 1,99 | 3,16 | 7.261,6 | 0,00% | 87.144 |
-| Com índice | 50 | 3,51 | 6,23 | 9,85 | 13.875,0 | 0,00% | 166.533 |
-| Com índice | 100 | 6,90 | 13,29 | 19,12 | 14.299,0 | 0,00% | 171.650 |
-| Com índice | 200 | 13,19 | 26,25 | 36,95 | 15.039,0 | 0,00% | 180.638 |
+| Sem índice | 10 | 19,46 | 32,55 | 43,72 | 510,3 | 0,00% | 6.132 |
+| Sem índice | 50 | 100,37 | 152,67 | 201,80 | 495,0 | 0,00% | 5.990 |
+| Sem índice | 100 | 216,09 | 287,02 | 409,93 | 457,4 | 0,00% | 5.604 |
+| Sem índice | 200 | 417,30 | 527,04 | 843,21 | 467,9 | 0,00% | 5.861 |
+| Com índice | 10 | 5,26 | 9,52 | 18,90 | 1.831,7 | 0,00% | 21.984 |
+| Com índice | 50 | 22,15 | 36,87 | 60,90 | 2.236,3 | 0,00% | 26.868 |
+| Com índice | 100 | 45,76 | 81,32 | 115,22 | 2.170,7 | 0,00% | 26.129 |
+| Com índice | 200 | 94,30 | 163,89 | 272,07 | 2.107,0 | 0,00% | 25.428 |
 
-![Gráfico Cenário 3 — Índices](experiments/k6/charts/cenario3_indices.png)
+![Gráfico Cenário 3 — Índices, regenerado a partir dos resultados locais](experiments/k6/charts/cenario3_indices.png)
+
+**Gráficos:** os três arquivos PNG correspondentes às tabelas estão incluídos no projeto em `experiments/k6/charts/`. O gerador `generate_report.py` pode recriá-los a partir dos 32 JSONs em `experiments/k6/results/`.
 
 ### 5.5 Discussão dos resultados (perguntas da seção 6.7)
 
 1. **Qual técnica apresentou os maiores ganhos de desempenho?**
-   O **cache em memória (Caffeine)** apresentou o maior ganho relativo em uma única consulta cara: no Top 50 a 50 VUs, o throughput saltou de **318 req/s** para **8.707,7 req/s** (**27,4×**) e a latência média caiu de **156,05 ms** para **5,54 ms** (**-96,4%**). Em consultas que precisam ir ao banco com parâmetros variados, o **índice composto** teve o maior throughput absoluto (**15.039 req/s** a 200 VUs, ganho de **8,8×** sobre a versão sem índice), seguido pelo **`JOIN FETCH`** (**6,8×** mais throughput que LAZY/EAGER).
+   Na nova bateria, o maior ganho relativo de throughput foi com **cache quente** no Top 50. A 50 VUs, a taxa passou de **110,4** para **15.709,8 req/s** (**142,3×**), enquanto a latência média caiu de **443,77** para **2,87 ms** (redução de **99,35%**). A 200 VUs, **JOIN FETCH** apresentou **394,2 req/s**, contra **53,5 req/s** do LAZY (**7,4×**). No teste de índices a 200 VUs, a taxa passou de **467,9** para **2.107,0 req/s** (**4,5×**). São operações com respostas diferentes; não se deve comparar o throughput absoluto de um endpoint com outro como se tivessem o mesmo custo.
 
 2. **Os ganhos foram mantidos quando a carga aumentou?**
-   Sim. Em todos os cenários otimizados, a vantagem sobre a versão original permaneceu expressiva até 200 VUs. Entretanto, no **cache quente a 200 VUs**, o throughput caiu de 8.707 req/s (50 VUs) para 4.246 req/s (200 VUs) e o p99 subiu para 497,54 ms devido à contenção de CPU, threads do Tomcat e coleta de lixo (GC) na serialização JSON em massa. Já no **índice**, o throughput continuou crescendo até 200 VUs (15.039 req/s) porque o payload JSON por álbum (10 músicas) é menor que o do Top 50.
+   Sim, as versões otimizadas mantiveram vantagem nas quatro cargas registradas. O cache quente teve **15.910,9 req/s** com 10 VUs e **14.951,1 req/s** com 200 VUs; o cenário sem cache passou de **114,2** para **93,8 req/s**. Para o índice, o throughput com 200 VUs foi **2.107,0 req/s**, ante **467,9 req/s** sem índice. Embora os ganhos persistam, a latência de cada implementação aumenta com a concorrência; o teste isolado não identifica por si só qual recurso de hardware se tornou o limitante.
 
 3. **Houve diferenças relevantes entre latência média, p95 e p99?**
-   Sim, especialmente sob alta carga (100 e 200 VUs). No Cenário 1 sem cache (200 VUs), a média foi **652,43 ms**, mas o p99 chegou a **1.302,83 ms** (o dobro da média), refletindo filas no pool de conexões do banco. No cache quente a 200 VUs, a média foi **45,75 ms**, enquanto o p99 atingiu **497,54 ms** (mais de 10× a média), evidenciando pausas pontuais de GC e disputa de threads. Isso mostra que olhar apenas a média esconde a experiência real dos 1% a 5% de usuários mais lentos.
+   Sim. No cache quente com 200 VUs, a média foi **11,65 ms**, o p95 **29,46 ms** e o p99 **57,13 ms**, evidenciando uma cauda de latência superior à média. Para o JOIN FETCH com 200 VUs, a média foi **497,80 ms** e o p99 **1.084,18 ms**. Esses percentis indicam que parte das requisições demora substancialmente mais, mesmo quando a média é relativamente menor.
 
 4. **Alguma otimização apresentou resultados inferiores aos esperados?**
-   O carregamento **EAGER** confirmou o alerta do enunciado: sob carga, teve desempenho praticamente idêntico ao **LAZY** (~200 req/s e ~950 ms de média a 200 VUs), pois ambos geraram o mesmo problema N+1 (11 queries por requisição). Além disso, o **cache frio** sob 100 VUs teve p99 maior que o cache quente (80,78 ms vs 42,36 ms) por conta das requisições simultâneas que atingiram o banco antes do primeiro preenchimento (*cache stampede*).
+   O carregamento **EAGER** não resolveu o problema N+1: com `limit=10`, tanto EAGER quanto LAZY provocaram 11 consultas SQL por requisição. A 200 VUs, o EAGER apresentou **56,6 req/s** e o LAZY **53,5 req/s**, diferença pequena para sustentar superioridade definitiva de uma estratégia sem repetir os experimentos. O cache frio teve desempenho próximo ao quente em cargas baixas, pois só inicia com miss; isso **não** significa que um miss custa o mesmo que um hit. Em 200 VUs, a latência média do cenário frio (**15,05 ms**) foi superior à do quente (**11,65 ms**).
 
 5. **Quais foram os principais gargalos identificados?**
-   - **Sem cache / sem índice:** CPU e varredura sequencial (`Seq Scan` + `Sort`) no PostgreSQL sobre 100.000 linhas, saturando o banco já com 10–50 VUs.
-   - **LAZY e EAGER (N+1):** saturação do pool de conexões JDBC (HikariCP) e latência acumulada de 11 round-trips SQL por requisição HTTP.
-   - **Com cache / com índice em 200 VUs:** o gargalo migra do banco para a camada de aplicação (threads HTTP, serialização JSON e GC da JVM).
+   - **Confirmado por plano de execução:** sem índice, a consulta de músicas usou `Seq Scan` e `Sort` sobre uma tabela de 100.000 linhas; com índice, usou `Index Scan` e eliminou a ordenação separada.
+   - **Confirmado por contadores SQL:** LAZY e EAGER realizaram N+1 consultas para acessar músicas de múltiplos álbuns, enquanto JOIN FETCH executou uma única consulta equivalente nesse caso.
+   - **Hipóteses não medidas diretamente:** contenção de CPU, GC, serialização JSON e espera por conexões podem contribuir para o aumento da latência sob carga. Sem medições específicas desses recursos, não é possível afirmar qual deles foi o gargalo determinante.
 
 6. **Como a redução das consultas ao banco influenciou o desempenho?**
-   Foi o fator determinante. Eliminar idas ao banco (cache: de 1 query pesada para 0) ou reduzir de 11 queries para 1 (`JOIN FETCH`) liberou imediatamente as conexões do pool e a CPU do PostgreSQL, multiplicando o throughput em **6,8× a 27,4×** e derrubando a latência em mais de **84% a 96%**.
+   O cache eliminou novas consultas ao banco nos hits do Top 50, enquanto JOIN FETCH reduziu 11 comandos SQL para 1 na consulta de 10 álbuns. Sob 200 VUs, o JOIN FETCH atingiu **394,2 req/s** contra **53,5 req/s** do LAZY e reduziu a latência média de **3.315,37** para **497,80 ms** (aproximadamente **85,0%**). O índice não eliminou chamadas SQL, mas tornou mais eficiente o acesso à tabela e a ordenação, melhorando o throughput da consulta selecionada.
 
 7. **Quais são os possíveis custos ou riscos das otimizações adotadas?**
-   - **Cache:** risco de dados temporariamente desatualizados (até o TTL de 60 s ou entre múltiplas instâncias), consumo de RAM na JVM e *cache stampede* na expiração sob alta carga.
-   - **`JOIN FETCH`:** consultas mais acopladas ao caso de uso, risco de produto cartesiano/duplicação sem `distinct` e incompatibilidade com paginação direta no banco em coleções.
-   - **Índices:** espaço adicional em disco (3.104 kB para o índice contra 8.536 kB da tabela `music`) e maior custo em operações de escrita (`INSERT`/`UPDATE`/`DELETE`), já que `reproductions` faz parte do índice.
+   - **Cache:** risco de dados temporariamente desatualizados quando a alteração contorna a aplicação, consumo de RAM da JVM e possibilidade de misses concorrentes durante o preenchimento.
+   - **JOIN FETCH:** maior acoplamento da consulta ao caso de uso, multiplicação de linhas na junção e cuidados com paginação de coleções.
+   - **Índices:** ocupação de disco (na medição anterior, 3.104 kB para o índice contra 8.536 kB da tabela) e custo extra nas operações de escrita.
+
+**Limites experimentais:** as execuções k6 duraram 12 s por cenário e foram realizadas em ambiente local. Para generalizar as diferenças pequenas, seria recomendável realizar rodadas independentes repetidas e medir CPU, memória, conexões e uso de disco do banco e da API. A coleta enviada não contém essas medidas complementares.
 
 ## 6. Discussão
 
@@ -709,10 +757,12 @@ Os experimentos demonstraram que otimização de sistemas não possui uma "bala 
 
 ## 7. Conclusão
 
-A avaliação experimental comprovou quantitativamente o impacto das três frentes de otimização sobre uma API REST com 100.000 registros no PostgreSQL:
+A avaliação experimental demonstrou quantitativamente os efeitos das três técnicas de otimização sobre a API REST de streaming com **100.000 músicas**, **10.000 álbuns** e **1.000 artistas**:
 
-- O **cache com Caffeine** reduziu a latência média do Top 50 em até **96,4%** e multiplicou o throughput em até **27,4×** (de 318 para 8.707 req/s a 50 VUs), com invalidação imediata via `@CacheEvict` e proteção por TTL de 60 s.
-- A substituição do padrão **N+1 (LAZY/EAGER)** por **`JOIN FETCH`** reduziu de 11 para 1 comando SQL por requisição, elevando o throughput de ~200 para **1.373 req/s** (**6,8×**) e cortando a latência em **84,8%** sob 200 VUs.
-- A criação do índice composto **`idx_music_album_reproductions`** eliminou o `Seq Scan` e o `Sort`, levando a consulta filtrada e ordenada de 1.717 para **15.039 req/s** (**8,8×**) a 200 VUs, com **0,00% de erros** em todos os 32 testes executados no Grafana k6.
+- **Cache com Caffeine:** na nova bateria k6 com 50 VUs, o throughput do Top 50 passou de **110,4 req/s sem cache** para **15.709,8 req/s com cache quente** (**142,3×**), enquanto a latência média caiu de **443,77 ms** para **2,87 ms** (redução de **99,35%**). O experimento funcional documentado na seção 3 demonstra hits, misses, invalidação pelo `PUT` e expiração pelo TTL de 60 s.
+- **JOIN FETCH:** na consulta de 10 álbuns e suas músicas, reduziu de **11 para 1** o número de comandos SQL em comparação com LAZY/EAGER. Com 200 VUs, o throughput passou de **53,5 req/s (LAZY)** para **394,2 req/s** (**7,4×**) e a latência média caiu de **3.315,37 ms** para **497,80 ms** (redução de aproximadamente **85,0%**).
+- **Índice composto:** a comparação documentada na seção 4.5 mostrou substituição de `Seq Scan` e `Sort` por `Index Scan`. Na nova bateria k6, com 200 VUs, o throughput passou de **467,9 req/s sem índice** para **2.107,0 req/s com índice** (**4,5×**), com latência média de **417,30 ms** e **94,30 ms**, respectivamente.
 
-O principal aprendizado do trabalho é a importância de **medir antes e depois** com ferramentas adequadas (`EXPLAIN ANALYZE`, estatísticas do Hibernate e testes de carga com percentis p95/p99), garantindo que cada otimização ataque o gargalo real com consciência de seus custos.
+O gerador de relatórios apresentou **32 execuções com taxa de erros HTTP de 0,00%**. Todas as 32 métricas foram conferidas diretamente nos respectivos arquivos JSON; os horários de modificação preservados no pacote são compatíveis com a sequência do script de execução. O experimento foi realizado em ambiente local e os resultados podem variar entre máquinas e rodadas.
+
+O principal aprendizado é a importância de **medir antes e depois** com `EXPLAIN ANALYZE`, estatísticas do Hibernate e testes de carga, mantendo as tabelas, os gráficos e as conclusões vinculados à mesma evidência experimental.

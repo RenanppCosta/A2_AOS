@@ -16,8 +16,6 @@ public class MusicController {
         this.service = service;
     }
 
-    // ----- Top 50 (cache principal) -----
-
     @GetMapping("/top50/sem-cache")
     public List<MusicDTO> top50WithoutCache() {
         return service.top50WithoutCache();
@@ -27,8 +25,6 @@ public class MusicController {
     public List<MusicDTO> top50WithCache() {
         return service.top50WithCache();
     }
-
-    // ----- Busca por id (contraste) -----
 
     @GetMapping("/{id}/sem-cache")
     public MusicDTO withoutCache(@PathVariable Long id) {
@@ -44,8 +40,6 @@ public class MusicController {
     public List<MusicDTO> byAlbum(@PathVariable Long albumId) {
         return service.findByAlbum(albumId);
     }
-
-    // ----- Atualização -----
 
     @PutMapping("/{id}")
     public MusicDTO update(@PathVariable Long id, @RequestBody UpdateMusicRequest request) {

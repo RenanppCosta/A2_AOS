@@ -28,7 +28,6 @@ public class AlbumService {
         this.statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
     }
 
-    /** LAZY: 1 query para os álbuns + 1 query por álbum ao acessar as músicas (N+1). */
     @Transactional(readOnly = true)
     public QueryReport lazy(int limit) {
         long start = begin();
@@ -40,7 +39,6 @@ public class AlbumService {
         return report("LAZY", albums.size(), musics, start);
     }
 
-    /** EAGER: o Hibernate carrega as músicas de todo álbum, mesmo sem a gente pedir. */
     @Transactional(readOnly = true)
     public QueryReport eager(int limit) {
         long start = begin();
@@ -52,7 +50,6 @@ public class AlbumService {
         return report("EAGER", albums.size(), musics, start);
     }
 
-    /** Otimizada: JOIN FETCH, tudo em uma única query. */
     @Transactional(readOnly = true)
     public QueryReport optimized(int limit) {
         long start = begin();
@@ -64,7 +61,6 @@ public class AlbumService {
         return report("JOIN FETCH", albums.size(), musics, start);
     }
 
-    /** Só precisa dos álbuns (não usa as músicas), com LAZY. */
     @Transactional(readOnly = true)
     public QueryReport lazyAlbumsOnly(int limit) {
         long start = begin();
@@ -72,7 +68,6 @@ public class AlbumService {
         return report("LAZY (so albuns)", albums.size(), 0, start);
     }
 
-    /** Só precisa dos álbuns, mas o EAGER carrega as músicas à toa. */
     @Transactional(readOnly = true)
     public QueryReport eagerAlbumsOnly(int limit) {
         long start = begin();
