@@ -62,6 +62,13 @@ public class MusicService {
         return MusicDTO.from(find(id));
     }
 
+    @Transactional(readOnly = true)
+    public List<MusicDTO> findByAlbum(Long albumId) {
+        return repository.findByAlbumIdOrderByReproductionsDesc(albumId).stream()
+                .map(MusicDTO::from)
+                .toList();
+    }
+
     // ---------------- Atualização + invalidação ----------------
 
     /**
